@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>World Cup 2026 — Radial Bracket Tracker (Local)</title>
+  <style>
+    :root{
+      --bg:#f6f1e8;
+      --ink:#111;
+      --muted:#666;
+      --card:#fff;
+      --winner:#0b5fff;
+      --loser:#b9b9b9;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:var(--bg);
+      color:var(--ink);
+    }
+    header{
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      border-bottom:1px solid rgba(0,0,0,.06);
+      position:sticky;
+      top:0;
+      background:linear-gradient(to bottom, rgba(246,241,232,.98), rgba(246,241,232,.92));
+      backdrop-filter: blur(6px);
+      gap:12px;
+    }
+    header h1{font-size:15px;margin:0;letter-spacing:.2px}
+    .controls{display:flex;gap:10px;align-items:center}
+    button{
+      border:1px solid rgba(0,0,0,.14);
+      background:var(--card);
+      padding:8px 10px;
+      border-radius:10px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:13px;
+    }
+    button.primary{background:var(--winner);border-color:var(--winner);color:#fff}
+
+    .wrap{max-width:1100px;margin:0 auto;padding:16px}
+    .note{color:var(--muted);font-size:13px;line-height:1.35;margin:8px 0 14px}
+
+    .stage{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      padding:12px 0 20px;
+    }
+
+    .board{
+      width:min(980px, 96vw);
+      aspect-ratio: 1/1;
+      position:relative;
+    }
+    svg{width:100%;height:100%;display:block}
+
+    /* OUTER TEAM BUTTONS (default = icons-only for iPhone) */
+    .teamBtn{
+      position:absolute;
+      transform: translate(-50%, -50%);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      width:34px;
+      height:34px;
+      padding:0;
+
+      border-radius:999px;
+      border:1px solid rgba(0,0,0,.14);
+      background:rgba(255,255,255,.92);
+      cursor:pointer;
+      user-select:none;
+      box-shadow: 0 1px 0 rgba(0,0,0,.04);
+    }
+    .teamBtn .flag{ font-size:18px; line-height:1; }
+    .teamBtn .name{ display:none; }
+
+    /* Names mode */
+    #board.show-names .teamBtn{
+      width:auto;
+      height:auto;
+      padding:7px 10px;
+      gap:8px;
+      justify-content:flex-start;
+      max-width: 190px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    #board.show-names .teamBtn .name{
+      display:inline;
+      font-weight:800;
+      font-size:12.5px;
+      line-height:1.1;
+    }
+
+    .teamBtn.loser{
+      color:var(--loser);
+      border-color:rgba(0,0,0,.10);
+      background:rgba(255,255,255,.75);
+    }
+    .teamBtn.loser .flag{opacity:.35}
+
+    .teamBtn.winner{
+      outline: 2px solid rgba(11,95,255,.22);
+      border-color: rgba(11,95,255,.45);
+    }
+
+    .teamBtn.disabled{
+      opacity:.6;
+      cursor:not-allowed;
+    }
+
+    /* Inner round match pills (keep readable, but compact on phones) */
+    .matchPill{
+      position:absolute;
+      transform: translate(-50%, -50%);
+      border-radius:999px;
+      border:1px solid rgba(0,0,0,.14);
+      background:rgba(255,255,255,.90);
+      box-shadow: 0 1px 0 rgba(0,0,0,.04);
+      cursor:pointer;
+      user-select:none;
+      padding:6px 9px;
+      font-weight:900;
+      font-size:12px;
+      color:#1a1a1a;
+      max-width: 260px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .matchPill.disabled{opacity:.6;cursor:not-allowed}
+    .matchPill.winner{
+      outline: 2px solid rgba(11,95,255,.22);
+      border-color: rgba(11,95,255,.45);
+    }
+
+    .centerBadge{
+      position:absolute;
+      left:50%; top:50%;
+      transform:translate(-50%,-50%);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      width:170px;height:170px;
+      border-radius:18px;
+      border:1px solid rgba(0,0,0,.12);
+      background:rgba(255,255,255,.9);
+      text-align:center;
+      padding:10px;
+      gap:6px;
+    }
+    .centerBadge .trophy{font-size:28px}
+    .centerBadge .label{
+      font-size:11px;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      color:var(--muted);
+      font-weight:900;
+    }
+    .centerBadge .champ{
+      font-weight:1000;
+      font-size:14px;
+      line-height:1.15;
+    }
+
+    @media (max-width: 560px){
+      .centerBadge{width:150px;height:150px}
+      .matchPill{font-size:11px;max-width:220px}
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>World Cup 2026 — Radial Bracket Tracker</h1>
+  <div class="controls">
+    <button id="resetBtn">Reset</button>
+    <button id="toggleLabelsBtn">Show Names</button>
+    <button class="primary" id="exportBtn">Export JSON</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="note">
+    Tap a team to mark it as the winner (loser turns gray). Winners advance inward. Works offline once saved.
+    Preset: <strong>Canada beat South Africa</strong>.
+  </div>
+
+  <div class="stage">
+    <div class="board" id="board">
+      <svg id="svg" viewBox="0 0 1000 1000" aria-label="Radial bracket">
+        <circle cx="500" cy="500" r="430" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="2"/>
+        <circle cx="500" cy="500" r="340" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="2"/>
+        <circle cx="500" cy="500" r="255" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="2"/>
+        <circle cx="500" cy="500" r="175" fill="none" stroke="rgba(0,0,0,.10)" stroke-width="2"/>
+        <circle cx="500" cy="500" r="105" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="2"/>
+        <g id="lines"></g>
+      </svg>
+
+      <div class="centerBadge">
+        <div class="trophy">🏆</div>
+        <div class="label">Champion</div>
+        <div class="champ" id="championText">—</div>
+
+        <div class="label" style="margin-top:4px">Last selection</div>
+        <div class="champ" id="lastPickText">Tap a team</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * Clockwise order starting at the top (exact).
+ * Adjacent pairs are Round of 32 matches: (1v2), (3v4), ...
+ */
+const CLOCKWISE = [
+  "South Africa",
+  "Canada",
+  "Netherlands",
+  "Morocco",
+  "Germany",
+  "Paraguay",
+  "France",
+  "Sweden",
+  "Belgium",
+  "Senegal",
+  "USA",
+  "Bosnia and Herzegovina",
+  "Spain",
+  "Austria",
+  "Portugal",
+  "Croatia",
+  "Brazil",
+  "Japan",
+  "Côte d'Ivoire",
+  "Norway",
+  "Mexico",
+  "Ecuador",
+  "England",
+  "DR Congo",
+  "Switzerland",
+  "Algeria",
+  "Colombia",
+  "Ghana",
+  "Australia",
+  "Egypt",
+  "Argentina",
+  "Cabo Verde"
+];
+
+const FLAGS = {
+  "South Africa": "🇿🇦",
+  "Canada": "🇨🇦",
+  "Netherlands": "🇳🇱",
+  "Morocco": "🇲🇦",
+  "Germany": "🇩🇪",
+  "Paraguay": "🇵🇾",
+  "France": "🇫🇷",
+  "Sweden": "🇸🇪",
+  "Belgium": "🇧🇪",
+  "Senegal": "🇸🇳",
+  "USA": "🇺🇸",
+  "Bosnia and Herzegovina": "🇧🇦",
+  "Spain": "🇪🇸",
+  "Austria": "🇦🇹",
+  "Portugal": "🇵🇹",
+  "Croatia": "🇭🇷",
+  "Brazil": "🇧🇷",
+  "Japan": "🇯🇵",
+  "Côte d'Ivoire": "🇨🇮",
+  "Norway": "🇳🇴",
+  "Mexico": "🇲🇽",
+  "Ecuador": "🇪🇨",
+  "England": "🏴",
+  "DR Congo": "🇨🇩",
+  "Switzerland": "🇨🇭",
+  "Algeria": "🇩🇿",
+  "Colombia": "🇨🇴",
+  "Ghana": "🇬🇭",
+  "Australia": "🇦🇺",
+  "Egypt": "🇪🇬",
+  "Argentina": "🇦🇷",
+  "Cabo Verde": "🇨🇻"
+};
+
+const STORAGE_KEY = "wc2026_radial_bracket_v2";
+const LABEL_MODE_KEY = "wc2026_label_mode"; // "icons" or "names"
+
+function makeMatchesFromList(list){
+  const matches = [];
+  for(let i=0;i<list.length;i+=2){
+    matches.push({ a:list[i], b:list[i+1], winner:null });
+  }
+  return matches; // 16
+}
+
+function defaultState(){
+  const state = {
+    r32: makeMatchesFromList(CLOCKWISE),                 // 16
+    r16: Array.from({length:8}, ()=>({a:null,b:null,winner:null})),
+    qf:  Array.from({length:4}, ()=>({a:null,b:null,winner:null})),
+    sf:  Array.from({length:2}, ()=>({a:null,b:null,winner:null})),
+    final: Array.from({length:1}, ()=>({a:null,b:null,winner:null}))
+  };
+  // Preset: Canada beat South Africa (match 0 is South Africa vs Canada)
+  state.r32[0].winner = "Canada";
+  return state;
+}
+
+function loadState(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw) return defaultState();
+  try { return JSON.parse(raw); } catch { return defaultState(); }
+}
+function saveState(state){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function propagate(state){
+  const rounds = ["r32","r16","qf","sf","final"];
+  for(let ri=0; ri<rounds.length-1; ri++){
+    const cur = state[rounds[ri]];
+    const next = state[rounds[ri+1]];
+    for(let i=0;i<next.length;i++){
+      const m1 = cur[i*2];
+      const m2 = cur[i*2+1];
+      next[i].a = m1?.winner || null;
+      next[i].b = m2?.winner || null;
+      if(next[i].winner && next[i].winner !== next[i].a && next[i].winner !== next[i].b){
+        next[i].winner = null;
+      }
+    }
+  }
+}
+
+function polar(cx, cy, r, angleRad){
+  return { x: cx + r*Math.cos(angleRad), y: cy + r*Math.sin(angleRad) };
+}
+
+const CX = 500, CY = 500;
+const R_TEAM = 455;
+const R_R32  = 420;
+const R_R16  = 330;
+const R_QF   = 245;
+const R_SF   = 165;
+const R_F    = 95;
+
+function angleForIndex(i, n){
+  const step = (Math.PI*2)/n;
+  return (-Math.PI/2) + i*step;
+}
+
+function labelForTeam(name){
+  return { flag: FLAGS[name] || "🏳️", name };
+}
+
+function clearBoard(){
+  document.querySelectorAll(".teamBtn").forEach(el=>el.remove());
+  document.querySelectorAll(".matchPill").forEach(el=>el.remove());
+  document.getElementById("lines").innerHTML = "";
+}
+
+function drawLine(x1,y1,x2,y2, winner=false, muted=false){
+  const g = document.getElementById("lines");
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+  line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+  line.setAttribute("stroke-width", winner ? "3" : "2");
+  line.setAttribute("stroke", winner ? "rgba(11,95,255,.55)" : (muted ? "rgba(0,0,0,.18)" : "rgba(0,0,0,.55)"));
+  line.setAttribute("stroke-linecap","round");
+  g.appendChild(line);
+}
+
+function matchAngle(matchIdx, matchCount){
+  const spanTeams = 32 / matchCount;
+  const startTeam = matchIdx * spanTeams;
+  const endTeam = startTeam + spanTeams - 1;
+  const centerTeam = (startTeam + endTeam) / 2;
+  return angleForIndex(centerTeam, 32);
+}
+
+function setLastPick(text){
+  const el = document.getElementById("lastPickText");
+  if(el) el.textContent = text;
+}
+
+function render(state){
+  propagate(state);
+  clearBoard();
+
+  const board = document.getElementById("board");
+
+  const champ = state.final[0].winner || "—";
+  document.getElementById("championText").textContent = champ;
+
+  // Outer teams (32)
+  for(let i=0;i<32;i++){
+    const t = CLOCKWISE[i];
+    const ang = angleForIndex(i, 32);
+    const pt = polar(CX, CY, R_TEAM, ang);
+
+    const btn = document.createElement("button");
+    btn.className = "teamBtn";
+    btn.style.left = (pt.x/1000*100) + "%";
+    btn.style.top  = (pt.y/1000*100) + "%";
+
+    const lab = labelForTeam(t);
+    btn.innerHTML = `<span class="flag">${lab.flag}</span><span class="name">${lab.name}</span>`;
+    btn.title = lab.name;
+
+    const matchIndex = Math.floor(i/2);
+    const match = state.r32[matchIndex];
+    const otherTeam = (match.a === t) ? match.b : match.a;
+
+    if(match.winner){
+      if(match.winner === t) btn.classList.add("winner");
+      else btn.classList.add("loser");
+    }
+
+    btn.addEventListener("click", ()=>{
+      match.winner = t;
+      saveState(state);
+      render(state);
+      setLastPick(`${t} beat ${otherTeam}`);
+    });
+
+    board.appendChild(btn);
+
+    // Tick line from label to R32 ring
+    const p1 = polar(CX, CY, R_TEAM-10, ang);
+    const p2 = polar(CX, CY, R_R32, ang);
+    drawLine(p1.x,p1.y,p2.x,p2.y,false,true);
+  }
+
+  // Inner rounds as match pills
+  function addRoundPills(roundKey, roundMatches, radius, matchCount){
+    for(let i=0;i<roundMatches.length;i++){
+      const m = roundMatches[i];
+      const ang = matchAngle(i, matchCount);
+      const node = polar(CX, CY, radius, ang);
+
+      const prevCount = matchCount * 2;
+      const childAang = matchAngle(i*2, prevCount);
+      const childBang = matchAngle(i*2+1, prevCount);
+
+      const prevR =
+        roundKey === "r16" ? R_R32 :
+        roundKey === "qf"  ? R_R16 :
+        roundKey === "sf"  ? R_QF  :
+        roundKey === "final" ? R_SF : R_SF;
+
+      const cA = polar(CX, CY, prevR, childAang);
+      const cB = polar(CX, CY, prevR, childBang);
+
+      drawLine(cA.x,cA.y,node.x,node.y,false,!m.a);
+      drawLine(cB.x,cB.y,node.x,node.y,false,!m.b);
+
+      const pill = document.createElement("div");
+      pill.className = "matchPill";
+      pill.style.left = (node.x/1000*100) + "%";
+      pill.style.top  = (node.y/1000*100) + "%";
+
+      const locked = !(m.a && m.b);
+      const text = `${m.a || "—"} vs ${m.b || "—"}`;
+      pill.textContent = text;
+
+      if(locked) pill.classList.add("disabled");
+      if(m.winner && !locked) pill.classList.add("winner");
+
+      pill.addEventListener("click", ()=>{
+        if(locked) return;
+
+        // cycle: none -> a -> b -> none
+        if(!m.winner) m.winner = m.a;
+        else if(m.winner === m.a) m.winner = m.b;
+        else m.winner = null;
+
+        saveState(state);
+        render(state);
+
+        if(m.winner) setLastPick(`${m.winner} advanced`);
+        else setLastPick(`Selection cleared`);
+      });
+
+      board.appendChild(pill);
+    }
+  }
+
+  addRoundPills("r16", state.r16, R_R16, 8);
+  addRoundPills("qf",  state.qf,  R_QF,  4);
+  addRoundPills("sf",  state.sf,  R_SF,  2);
+
+  // Final (single match) at top-center inward
+  const fm = state.final[0];
+  const leftAng = matchAngle(0, 2);
+  const rightAng = matchAngle(1, 2);
+  const leftP = polar(CX,CY,R_SF,leftAng);
+  const rightP= polar(CX,CY,R_SF,rightAng);
+  const fAng = -Math.PI/2;
+  const fNode= polar(CX,CY,R_F,fAng);
+
+  drawLine(leftP.x,leftP.y,fNode.x,fNode.y,false,!fm.a);
+  drawLine(rightP.x,rightP.y,fNode.x,fNode.y,false,!fm.b);
+
+  const finalPill = document.createElement("div");
+  finalPill.className = "matchPill";
+  finalPill.style.left = (fNode.x/1000*100) + "%";
+  finalPill.style.top  = (fNode.y/1000*100) + "%";
+  finalPill.style.fontSize = "12.5px";
+  finalPill.style.fontWeight = "1000";
+
+  const lockedFinal = !(fm.a && fm.b);
+  finalPill.textContent = `${fm.a || "—"} vs ${fm.b || "—"}`;
+  if(lockedFinal) finalPill.classList.add("disabled");
+  if(fm.winner && !lockedFinal) finalPill.classList.add("winner");
+
+  finalPill.addEventListener("click", ()=>{
+    if(lockedFinal) return;
+
+    if(!fm.winner) fm.winner = fm.a;
+    else if(fm.winner === fm.a) fm.winner = fm.b;
+    else fm.winner = null;
+
+    saveState(state);
+    render(state);
+
+    if(fm.winner) setLastPick(`${fm.winner} is champion`);
+    else setLastPick(`Champion cleared`);
+  });
+
+  board.appendChild(finalPill);
+
+  // Aesthetic spoke to center
+  const spoke = polar(CX,CY,R_F-10,fAng);
+  drawLine(spoke.x,spoke.y,CX,CY,false,true);
+}
+
+function applyLabelMode(mode){
+  const board = document.getElementById("board");
+  const btn = document.getElementById("toggleLabelsBtn");
+  const showNames = (mode === "names");
+  board.classList.toggle("show-names", showNames);
+  btn.textContent = showNames ? "Show Icons" : "Show Names";
+  localStorage.setItem(LABEL_MODE_KEY, mode);
+}
+
+// Boot
+let state = loadState();
+render(state);
+
+// Label toggle init
+applyLabelMode(localStorage.getItem(LABEL_MODE_KEY) || "icons");
+
+document.getElementById("toggleLabelsBtn").addEventListener("click", ()=>{
+  const current = localStorage.getItem(LABEL_MODE_KEY) || "icons";
+  applyLabelMode(current === "icons" ? "names" : "icons");
+});
+
+document.getElementById("resetBtn").addEventListener("click", ()=>{
+  localStorage.removeItem(STORAGE_KEY);
+  state = defaultState();
+  render(state);
+  setLastPick("Tap a team");
+});
+
+document.getElementById("exportBtn").addEventListener("click", async ()=>{
+  const data = JSON.stringify(state, null, 2);
+  try{
+    await navigator.clipboard.writeText(data);
+    alert("Bracket JSON copied to clipboard.");
+  }catch{
+    const w = window.open();
+    w.document.write("<pre>"+data.replaceAll("<","&lt;")+"</pre>");
+    w.document.close();
+  }
+});
+</script>
+</body>
+</html>
